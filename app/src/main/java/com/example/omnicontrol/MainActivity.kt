@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -76,22 +78,10 @@ fun MainApp(viewModel: DiscoveryViewModel = hiltViewModel()) {
     val currentDestination = navBackStackEntry?.destination
     val pairedDevices by viewModel.pairedDevices.collectAsState(initial = emptyList())
 
-    var hasNavigatedInitial by remember { mutableStateOf(false) }
-
-    LaunchedEffect(pairedDevices) {
-        if (!hasNavigatedInitial && pairedDevices.isNotEmpty()) {
-            navController.navigate(Screen.Remote.route) {
-                popUpTo(Screen.Setup.route) { inclusive = true }
-            }
-            hasNavigatedInitial = true
-        }
-    }
-
     Scaffold(
         bottomBar = {
             val showBottomBar = currentDestination?.route in listOf(
                 Screen.Remote.route,
-                Screen.DeviceList.route,
                 Screen.Apps.route
             )
             
@@ -103,8 +93,7 @@ fun MainApp(viewModel: DiscoveryViewModel = hiltViewModel()) {
                     windowInsets = WindowInsets(0, 0, 0, 0)
                 ) {
                     val items = listOf(
-                        NavigationItem(Screen.Remote, "Remote", Icons.Default.SettingsRemote),
-                        NavigationItem(Screen.DeviceList, "Devices", Icons.Default.Devices)
+                        NavigationItem(Screen.Remote, "Remote", Icons.Default.SettingsRemote)
                     )
 
                     items.forEach { item ->
@@ -131,6 +120,20 @@ fun MainApp(viewModel: DiscoveryViewModel = hiltViewModel()) {
                             )
                         )
                     }
+                    
+                    // Add a Search/Add item that leads to Setup
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.Add, contentDescription = "Connect TV", modifier = Modifier.size(22.dp)) },
+                        label = { Text("Connect", fontSize = 10.sp, fontWeight = FontWeight.Medium) },
+                        selected = false,
+                        onClick = {
+                            navController.navigate(Screen.Setup.route)
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            unselectedIconColor = MaterialTheme.colorScheme.onSecondary.copy(alpha = 0.6f),
+                            unselectedTextColor = MaterialTheme.colorScheme.onSecondary.copy(alpha = 0.6f)
+                        )
+                    )
                 }
             }
         }
@@ -169,19 +172,15 @@ fun MainApp(viewModel: DiscoveryViewModel = hiltViewModel()) {
             }
             composable(Screen.Remote.route) {
                 RemoteScreen(
-                    onEditShortcuts = { navController.navigate(Screen.EditShortcuts.route) },
+                    onSwitchDevice = { navController.navigate(Screen.Setup.route) },
                     onOpenSettings = { navController.navigate(Screen.Settings.route) }
                 )
             }
             composable(Screen.Apps.route) {
-                EditShortcutsScreen(
-                    onBack = { navController.popBackStack() }
-                )
+                // Feature disabled as per user request
             }
             composable(Screen.EditShortcuts.route) {
-                EditShortcutsScreen(
-                    onBack = { navController.popBackStack() }
-                )
+                // Feature disabled as per user request
             }
             composable(Screen.Settings.route) {
                 SettingsScreen(

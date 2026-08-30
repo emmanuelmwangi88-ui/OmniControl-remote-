@@ -1,5 +1,14 @@
 package com.example.omnicontrol.ui.screens
 
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -19,10 +28,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.omnicontrol.data.model.Device
 import com.example.omnicontrol.ui.remote.DiscoveryViewModel
@@ -34,9 +45,59 @@ fun SetupScreen(
     onBack: () -> Unit,
     viewModel: DiscoveryViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val discoveredDevices by viewModel.discoveredDevices.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
     val isIrSupported = viewModel.isIrSupported
+
+    var permissionsGranted by remember {
+        mutableStateOf(
+            checkPermissions(context)
+        )
+    }
+
+    var showPermissionExplanation by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        val allGranted = result.values.all { it }
+        if (allGranted) {
+            permissionsGranted = true
+            viewModel.startDiscovery()
+        } else {
+            showPermissionExplanation = true
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!permissionsGranted) {
+            permissionLauncher.launch(getRequiredPermissions())
+        } else {
+            viewModel.startDiscovery()
+        }
+    }
+
+    if (showPermissionExplanation) {
+        AlertDialog(
+            onDismissRequest = { /* Don't dismiss without action */ },
+            title = { Text("Permissions Required") },
+            text = { Text("OmniControl needs Location and Bluetooth permissions to discover TVs on your network. Please grant them in settings.") },
+            confirmButton = {
+                Button(onClick = {
+                    showPermissionExplanation = false
+                    openAppSettings(context)
+                }) {
+                    Text("OPEN SETTINGS")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onBack) {
+                    Text("CANCEL")
+                }
+            }
+        )
+    }
 
     SetupScreenContent(
         discoveredDevices = discoveredDevices,
@@ -48,6 +109,32 @@ fun SetupScreen(
         onTestIrCommand = { brand, cmd -> viewModel.testIrCommand(brand, cmd) },
         onSaveIrDevice = { viewModel.saveIrDevice(it) }
     )
+}
+
+private fun getRequiredPermissions(): Array<String> {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )
+    } else {
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+}
+
+private fun checkPermissions(context: Context): Boolean {
+    return getRequiredPermissions().all {
+        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    }
+}
+
+private fun openAppSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.fromParts("package", context.packageName, null)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    context.startActivity(intent)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

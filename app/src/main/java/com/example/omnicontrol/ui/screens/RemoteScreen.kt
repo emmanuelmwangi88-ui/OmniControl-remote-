@@ -71,7 +71,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemoteScreen(
-    onEditShortcuts: () -> Unit,
+    onSwitchDevice: () -> Unit,
     onOpenSettings: () -> Unit,
     viewModel: RemoteViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel()
@@ -86,15 +86,12 @@ fun RemoteScreen(
         shortcuts = shortcuts,
         connectionState = connectionState,
         hapticEnabled = hapticEnabled,
-        onEditShortcuts = onEditShortcuts,
+        onSwitchDevice = onSwitchDevice,
         onOpenSettings = onOpenSettings,
         onSendCommand = { viewModel.sendCommand(it) },
         onSendText = { viewModel.sendText(it) },
         onLaunchApp = { viewModel.launchApp(it) },
         onReconnect = { viewModel.reconnect() }
-        // availableDevices / onSelectDevice / onScanDevices / onEnterChannel /
-        // onSubmitPairingCode all fall back to safe defaults until the ViewModel
-        // exposes them — see the NOTE above.
     )
 }
 
@@ -105,7 +102,7 @@ fun RemoteScreenContent(
     shortcuts: List<AppShortcut>,
     connectionState: ConnectionState,
     hapticEnabled: Boolean,
-    onEditShortcuts: () -> Unit,
+    onSwitchDevice: () -> Unit,
     onOpenSettings: () -> Unit,
     onSendCommand: (RemoteCommand) -> Unit,
     onSendText: (String) -> Unit,
@@ -237,10 +234,10 @@ fun RemoteScreenContent(
                     .padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onEditShortcuts) {
+                IconButton(onClick = onSwitchDevice) {
                     Icon(
-                        Icons.Default.Apps,
-                        contentDescription = "Edit quick launch apps",
+                        Icons.Default.Devices,
+                        contentDescription = "Switch device",
                         tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
@@ -604,9 +601,6 @@ fun RemoteScreenContent(
                         items(shortcuts) { shortcut ->
                             QuickLaunchTile(shortcut, onClick = { appId -> debounceClick { hapticFeedback(); onLaunchApp(appId) } })
                         }
-                        item {
-                            AddShortcutTile(onClick = onEditShortcuts)
-                        }
                     }
                 }
             }
@@ -622,9 +616,8 @@ fun RemoteScreenContent(
 
 @Composable
 fun ConnectionStateBanner(state: ConnectionState, onRetry: () -> Unit, onEnterCode: () -> Unit = {}) {
-    if (state == ConnectionState.CONNECTED) return
-
     val (text, color) = when (state) {
+        ConnectionState.CONNECTED -> "Connected to TV" to Color(0xFF4CAF50)
         ConnectionState.CONNECTING -> "Connecting to TV..." to Color(0xFFFFC107)
         ConnectionState.PAIRING_REQUIRED -> "Check TV for pairing code" to Color(0xFF558BFF)
         ConnectionState.ERROR -> "Connection failed" to Color(0xFFF44336)
@@ -1188,7 +1181,7 @@ fun RemoteScreenDarkPreview() {
             ),
             connectionState = com.example.omnicontrol.domain.ConnectionState.CONNECTED,
             hapticEnabled = true,
-            onEditShortcuts = {},
+            onSwitchDevice = {},
             onOpenSettings = {},
             onSendCommand = {},
             onSendText = {},

@@ -113,9 +113,10 @@ class DiscoveryService @Inject constructor(
                     if (adapter?.isEnabled == true) {
                         adapter.bondedDevices?.forEach { device ->
                             if (isTvLike(device)) {
+                                val deviceName = try { device.name } catch (e: SecurityException) { "Unknown Bluetooth Device" }
                                 if (devices.add(Device(
                                     id = "bt-${device.address}",
-                                    name = device.name ?: "Unknown Bluetooth TV",
+                                    name = deviceName ?: "Unknown Bluetooth TV",
                                     ipAddress = device.address,
                                     type = DeviceType.BLUETOOTH
                                 ))) {
@@ -124,7 +125,11 @@ class DiscoveryService @Inject constructor(
                             }
                         }
                     }
-                } catch (e: SecurityException) {}
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "Bluetooth discovery permission missing", e)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Bluetooth discovery error", e)
+                }
 
                 // SSDP
                 var socket: DatagramSocket? = null
@@ -179,14 +184,17 @@ class DiscoveryService @Inject constructor(
     }.flowOn(Dispatchers.IO)
 
     private fun isTvLike(device: BluetoothDevice): Boolean {
-        try {
-            return when (device.bluetoothClass?.majorDeviceClass) {
+        return try {
+            val deviceClass = device.bluetoothClass?.majorDeviceClass
+            val deviceName = device.name
+            when (deviceClass) {
                 android.bluetooth.BluetoothClass.Device.Major.AUDIO_VIDEO -> true
-                else -> device.name?.contains("TV", ignoreCase = true) == true || 
-                        device.name?.contains("Remote", ignoreCase = true) == true
+                else -> deviceName?.contains("TV", ignoreCase = true) == true || 
+                        deviceName?.contains("Remote", ignoreCase = true) == true
             }
         } catch (e: SecurityException) {
-            return false
+            Log.e(TAG, "SecurityException checking Bluetooth device: ${device.address}", e)
+            false
         }
     }
 

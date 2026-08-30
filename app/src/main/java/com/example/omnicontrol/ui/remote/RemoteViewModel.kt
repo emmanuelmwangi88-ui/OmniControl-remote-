@@ -63,6 +63,10 @@ class RemoteViewModel @Inject constructor(
                     populateDefaultShortcuts()
                 } else {
                     _shortcuts.value = it
+                    // Ensure mandatory apps are present
+                    if (it.size < 5) { // Simple heuristic
+                        populateDefaultShortcuts()
+                    }
                 }
             }
         }
@@ -97,13 +101,6 @@ class RemoteViewModel @Inject constructor(
                 iconUrl = "https://cdn.pixabay.com/photo/2021/06/15/12/51/youtube-6338464_1280.png"
             ),
             AppShortcut(
-                name = "Netflix",
-                appId = "netflix",
-                colorHex = "#E50914",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-netflix-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-card-pack-logos-icons-226514.png"
-            ),
-            AppShortcut(
                 name = "Spotify",
                 appId = "spotify",
                 colorHex = "#1DB954",
@@ -111,18 +108,11 @@ class RemoteViewModel @Inject constructor(
                 iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-spotify-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-card-pack-logos-icons-226521.png"
             ),
             AppShortcut(
-                name = "Web Search",
-                appId = "google",
-                colorHex = "#4285F4",
+                name = "Netflix",
+                appId = "netflix",
+                colorHex = "#E50914",
                 iconType = "ICON",
-                iconUrl = "https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.png"
-            ),
-            AppShortcut(
-                name = "Disney+",
-                appId = "disneyplus",
-                colorHex = "#113CCF",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-disney-plus-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226490.png"
+                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-netflix-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-card-pack-logos-icons-226514.png"
             ),
             AppShortcut(
                 name = "Prime Video",
@@ -132,46 +122,32 @@ class RemoteViewModel @Inject constructor(
                 iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-amazon-prime-video-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226487.png"
             ),
             AppShortcut(
-                name = "Hulu",
-                appId = "hulu",
-                colorHex = "#1CE783",
+                name = "Plex",
+                appId = "plex",
+                colorHex = "#EBAF00",
                 iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-hulu-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226495.png"
+                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-plex-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226519.png"
             ),
             AppShortcut(
-                name = "Apple TV",
-                appId = "appletv",
-                colorHex = "#000000",
+                name = "Play Store",
+                appId = "playstore",
+                colorHex = "#41F0BB",
                 iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-apple-tv-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-card-pack-logos-icons-226488.png"
+                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-google-play-store-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226492.png"
             ),
             AppShortcut(
-                name = "Twitch",
-                appId = "twitch",
-                colorHex = "#9146FF",
+                name = "Browser",
+                appId = "browser",
+                colorHex = "#4285F4",
                 iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-twitch-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-card-pack-logos-icons-226522.png"
+                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-google-chrome-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-card-pack-logos-icons-226491.png"
             ),
             AppShortcut(
-                name = "Max",
-                appId = "hbomax",
-                colorHex = "#000080",
+                name = "Disney+",
+                appId = "disneyplus",
+                colorHex = "#113CCF",
                 iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-hbo-max-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226493.png"
-            ),
-            AppShortcut(
-                name = "Paramount+",
-                appId = "paramountplus",
-                colorHex = "#0064FF",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-paramount-plus-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226517.png"
-            ),
-            AppShortcut(
-                name = "Peacock",
-                appId = "peacock",
-                colorHex = "#000000",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-peacock-tv-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226518.png"
+                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-disney-plus-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226490.png"
             )
         )
         defaults.forEach { shortcutRepository.addShortcut(it) }

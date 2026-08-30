@@ -38,7 +38,7 @@ class DiscoveryViewModel @Inject constructor(
     }
 
     init {
-        startDiscovery()
+        // Discovery is triggered manually from the UI after permission checks
     }
 
     fun startDiscovery() {
