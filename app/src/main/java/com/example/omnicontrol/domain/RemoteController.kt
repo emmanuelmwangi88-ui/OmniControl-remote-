@@ -20,6 +20,7 @@ interface RemoteController {
     suspend fun launchApp(appId: String)
     suspend fun sendText(text: String) {}
     suspend fun pair(pin: String) {}
+    suspend fun ping(): Boolean = true
     fun disconnect()
     val connectionState: StateFlow<ConnectionState>
     fun setTokenListener(listener: (String) -> Unit) {}

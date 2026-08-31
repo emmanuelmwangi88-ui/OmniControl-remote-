@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.protobuf)
 }
 
 android {
@@ -38,6 +39,23 @@ android {
     }
 }
 
+// polo.proto (pairing handshake) and remotemessage.proto (key/command channel) live in the
+// default src/main/proto location, which this plugin picks up automatically.
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:4.29.3"
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                create("java") {
+                    option("lite")
+                }
+            }
+        }
+    }
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -65,6 +83,9 @@ dependencies {
     // Network
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
+
+    // Android TV Remote v2 protocol (pairing.proto / remotemessage.proto)
+    implementation(libs.protobuf.javalite)
     
     // Ktor (Legacy/Optional)
     implementation(libs.ktor.client.core)
@@ -80,9 +101,6 @@ dependencies {
 
     // Image Loading
     implementation(libs.coil.compose)
-
-    // Protobuf
-    implementation(libs.protobuf.javalite)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

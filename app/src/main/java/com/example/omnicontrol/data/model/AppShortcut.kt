@@ -9,6 +9,7 @@ data class AppShortcut(
     val name: String,
     val appId: String,
     val colorHex: String,
-    val iconType: String = "TEXT", // e.g., TEXT, ICON
-    val iconUrl: String? = null
+    val iconType: String = "TEXT", // e.g., TEXT, ICON, RES
+    val iconUrl: String? = null,
+    val iconRes: Int? = null
 )

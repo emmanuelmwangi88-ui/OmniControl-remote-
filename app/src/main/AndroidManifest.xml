@@ -25,7 +25,14 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.OmniControl">
+        <!--
+          Roku's ECP API is plain HTTP on the local network (http://<ip>:8060). Android blocks
+          cleartext traffic by default since API 28, which silently broke every Roku connection.
+          We only ever talk cleartext to devices the user explicitly paired with on their own
+          LAN, so this is scoped to what this app already does, not opened up to the internet.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

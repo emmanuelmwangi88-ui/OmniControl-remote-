@@ -85,6 +85,13 @@ class BluetoothController(
         // Bluetooth app launching is non-standard
     }
 
+    override suspend fun ping(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            socket?.outputStream?.write(0x00) // Heartbeat/Ping
+            true
+        } catch (e: Exception) { false }
+    }
+
     private fun sendByte(b: Byte) {
         try {
             socket?.outputStream?.write(b.toInt())

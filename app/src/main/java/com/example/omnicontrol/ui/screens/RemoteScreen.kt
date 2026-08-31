@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
 import com.example.omnicontrol.data.model.AppShortcut
 import com.example.omnicontrol.data.model.Device
@@ -51,6 +52,7 @@ import com.example.omnicontrol.ui.remote.RemoteViewModel
 import com.example.omnicontrol.ui.settings.SettingsViewModel
 import com.example.omnicontrol.util.HapticUtil
 import kotlinx.coroutines.delay
+import com.example.omnicontrol.ui.components.PairingCodeDialog
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -885,11 +887,18 @@ fun QuickLaunchTile(shortcut: AppShortcut, onClick: (String) -> Unit) {
                 .size(56.dp)
                 .clip(RoundedCornerShape(14.dp)),
             shape = RoundedCornerShape(14.dp),
-            color = if (shortcut.iconUrl != null) Color.Transparent else color,
+            color = if (shortcut.iconUrl != null || shortcut.iconRes != null) Color.Transparent else color,
             shadowElevation = 4.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
-                if (shortcut.iconUrl != null) {
+                if (shortcut.iconRes != null) {
+                    Icon(
+                        painter = painterResource(id = shortcut.iconRes),
+                        contentDescription = shortcut.name,
+                        tint = Color.Unspecified,
+                        modifier = Modifier.fillMaxSize().padding(10.dp)
+                    )
+                } else if (shortcut.iconUrl != null) {
                     AsyncImage(
                         model = shortcut.iconUrl,
                         contentDescription = shortcut.name,
@@ -1140,30 +1149,6 @@ fun ChannelKeypadDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PairingCodeDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
-    var code by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Enter pairing code") },
-        text = {
-            OutlinedTextField(
-                value = code,
-                onValueChange = { if (it.length <= 8) code = it },
-                placeholder = { Text("Code shown on your TV") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { if (code.isNotBlank()) { onSubmit(code); onDismiss() } }) { Text("Pair") }
-        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

@@ -3,6 +3,7 @@ package com.example.omnicontrol.ui.remote
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.omnicontrol.R
 import com.example.omnicontrol.data.discovery.DiscoveryService
 import com.example.omnicontrol.data.model.Device
 import com.example.omnicontrol.data.model.DeviceType
@@ -78,7 +79,14 @@ class RemoteViewModel @Inject constructor(
                 val current = _selectedDevice.value ?: continue
                 if (current.type == DeviceType.IR) continue
                 
-                Log.d("RemoteViewModel", "Running periodic re-discovery for IP recovery")
+                // First, try a lightweight ping
+                val isAlive = currentController?.ping() ?: false
+                if (isAlive) {
+                    Log.d("RemoteViewModel", "Device ${current.name} is still alive at ${current.ipAddress}")
+                    continue
+                }
+                
+                Log.d("RemoteViewModel", "Device ${current.name} ping failed, running re-discovery for IP recovery")
                 discoveryService.startScanning().take(1).collect { discovered ->
                     val match = discovered.find { it.id == current.id }
                     if (match != null && match.ipAddress != current.ipAddress) {
@@ -97,57 +105,57 @@ class RemoteViewModel @Inject constructor(
                 name = "YouTube",
                 appId = "youtube",
                 colorHex = "#FF0000",
-                iconType = "ICON",
-                iconUrl = "https://cdn.pixabay.com/photo/2021/06/15/12/51/youtube-6338464_1280.png"
+                iconType = "RES",
+                iconRes = R.drawable.ic_youtube
             ),
             AppShortcut(
                 name = "Spotify",
                 appId = "spotify",
                 colorHex = "#1DB954",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-spotify-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-card-pack-logos-icons-226521.png"
+                iconType = "RES",
+                iconRes = R.drawable.ic_spotify
             ),
             AppShortcut(
                 name = "Netflix",
                 appId = "netflix",
                 colorHex = "#E50914",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-netflix-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-card-pack-logos-icons-226514.png"
+                iconType = "RES",
+                iconRes = R.drawable.ic_netflix
             ),
             AppShortcut(
                 name = "Prime Video",
                 appId = "primevideo",
                 colorHex = "#00A8E1",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-amazon-prime-video-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226487.png"
+                iconType = "RES",
+                iconRes = R.drawable.ic_prime_video
             ),
             AppShortcut(
                 name = "Plex",
                 appId = "plex",
                 colorHex = "#EBAF00",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-plex-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226519.png"
+                iconType = "RES",
+                iconRes = R.drawable.ic_plex
             ),
             AppShortcut(
                 name = "Play Store",
                 appId = "playstore",
                 colorHex = "#41F0BB",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-google-play-store-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226492.png"
+                iconType = "RES",
+                iconRes = R.drawable.ic_play_store
             ),
             AppShortcut(
                 name = "Browser",
                 appId = "browser",
                 colorHex = "#4285F4",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-google-chrome-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-card-pack-logos-icons-226491.png"
+                iconType = "RES",
+                iconRes = R.drawable.ic_browser
             ),
             AppShortcut(
                 name = "Disney+",
                 appId = "disneyplus",
                 colorHex = "#113CCF",
-                iconType = "ICON",
-                iconUrl = "https://cdn.iconscout.com/icon/free/png-256/free-disney-plus-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-226490.png"
+                iconType = "RES",
+                iconRes = R.drawable.ic_disney_plus
             )
         )
         defaults.forEach { shortcutRepository.addShortcut(it) }

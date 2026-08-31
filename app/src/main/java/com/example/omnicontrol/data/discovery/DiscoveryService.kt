@@ -4,6 +4,9 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
@@ -138,6 +141,17 @@ class DiscoveryService @Inject constructor(
                     socket.soTimeout = 3000
                     socket.broadcast = true
 
+                    // If the phone also has mobile data on, Android may otherwise route this
+                    // multicast traffic out the cellular interface instead of Wi-Fi, so the TV
+                    // never sees the M-SEARCH request. Bind explicitly to the Wi-Fi network.
+                    getWifiNetwork()?.let { network ->
+                        try {
+                            network.bindSocket(socket)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Could not bind SSDP socket to Wi-Fi network", e)
+                        }
+                    }
+
                     SEARCH_TARGETS.forEach { target ->
                         val query = "M-SEARCH * HTTP/1.1\r\n" +
                                 "HOST: $SSDP_MULTICAST_ADDRESS:$SSDP_PORT\r\n" +
@@ -152,7 +166,7 @@ class DiscoveryService @Inject constructor(
                         try {
                             socket.send(packet)
                             val startTime = System.currentTimeMillis()
-                            while (System.currentTimeMillis() - startTime < 2000) {
+                            while (System.currentTimeMillis() - startTime < 3000) {
                                 val recvBuf = ByteArray(8192)
                                 val recvPacket = DatagramPacket(recvBuf, recvBuf.size)
                                 try {
@@ -164,7 +178,9 @@ class DiscoveryService @Inject constructor(
                                     }
                                 } catch (e: SocketTimeoutException) { break }
                             }
-                        } catch (e: Exception) {}
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error sending SSDP packet for $target", e)
+                        }
                         delay(100)
                     }
                 } finally {
@@ -182,6 +198,15 @@ class DiscoveryService @Inject constructor(
             ssdpJob.cancel()
         }
     }.flowOn(Dispatchers.IO)
+
+    private fun getWifiNetwork(): Network? {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return null
+        return connectivityManager.allNetworks.firstOrNull { network ->
+            val caps = connectivityManager.getNetworkCapabilities(network)
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+    }
 
     private fun isTvLike(device: BluetoothDevice): Boolean {
         return try {

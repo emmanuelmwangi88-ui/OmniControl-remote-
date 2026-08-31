@@ -7,9 +7,12 @@ import com.example.omnicontrol.domain.ConnectionState
 import com.example.omnicontrol.domain.DpadKey
 import com.example.omnicontrol.domain.RemoteController
 import okhttp3.*
+import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import javax.inject.Inject
 
@@ -119,7 +122,20 @@ class SamsungController(
 
     override suspend fun home() = sendKey("KEY_HOME")
     override suspend fun back() = sendKey("KEY_RETURN")
-    override suspend fun launchApp(appId: String) {} // Requires additional discovery
+    
+    override suspend fun launchApp(appId: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                val url = "http://$ipAddress:8001/api/v2/applications/$appId"
+                val request = Request.Builder().url(url).post("".toRequestBody()).build()
+                client.newCall(request).execute().use { response ->
+                    Log.d("SamsungController", "Launch app $appId result: ${response.isSuccessful}")
+                }
+            } catch (e: Exception) {
+                Log.e("SamsungController", "Failed to launch app $appId", e)
+            }
+        }
+    }
     
     override fun disconnect() {
         webSocket?.close(1000, "User disconnect")

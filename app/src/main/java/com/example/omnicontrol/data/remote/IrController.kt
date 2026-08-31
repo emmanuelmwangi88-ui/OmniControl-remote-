@@ -37,12 +37,12 @@ class IrController(private val context: Context) : RemoteController {
     }
 
     override suspend fun connect(): ConnectionResult {
-        return if (irManager != null) {
+        return if (irManager?.hasIrEmitter() == true) {
             _connectionState.value = ConnectionState.CONNECTED
             ConnectionResult.Success
         } else {
             _connectionState.value = ConnectionState.ERROR
-            ConnectionResult.Failure("IR Blaster not available")
+            ConnectionResult.Failure("IR Blaster not available or not supported on this device")
         }
     }
 

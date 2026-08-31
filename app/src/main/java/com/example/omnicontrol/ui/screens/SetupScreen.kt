@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -30,12 +31,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.omnicontrol.data.model.Device
+import com.example.omnicontrol.ui.components.PairingCodeDialog
 import com.example.omnicontrol.ui.remote.DiscoveryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,21 +51,22 @@ fun SetupScreen(
     val context = LocalContext.current
     val discoveredDevices by viewModel.discoveredDevices.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
+    val connectionState by viewModel.connectionState.collectAsState()
+    val error by viewModel.error.collectAsState()
     val isIrSupported = viewModel.isIrSupported
 
-    var permissionsGranted by remember {
-        mutableStateOf(
-            checkPermissions(context)
-        )
-    }
+    val snackbarHostState = remember { SnackbarHostState() }
+    var connectingDeviceId by remember { mutableStateOf<String?>(null) }
 
+    var permissionsGranted by remember {
+        mutableStateOf(checkPermissions(context))
+    }
     var showPermissionExplanation by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        val allGranted = result.values.all { it }
-        if (allGranted) {
+        if (result.values.all { it }) {
             permissionsGranted = true
             viewModel.startDiscovery()
         } else {
@@ -78,23 +82,35 @@ fun SetupScreen(
         }
     }
 
+    LaunchedEffect(error) {
+        error?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearError()
+            connectingDeviceId = null
+        }
+    }
+
+    LaunchedEffect(connectionState) {
+        if (connectionState == com.example.omnicontrol.domain.ConnectionState.CONNECTED) {
+            onDevicePaired()
+        } else if (connectionState == com.example.omnicontrol.domain.ConnectionState.ERROR) {
+            connectingDeviceId = null
+        }
+    }
+
     if (showPermissionExplanation) {
         AlertDialog(
-            onDismissRequest = { /* Don't dismiss without action */ },
+            onDismissRequest = { },
             title = { Text("Permissions Required") },
             text = { Text("OmniControl needs Location and Bluetooth permissions to discover TVs on your network. Please grant them in settings.") },
             confirmButton = {
                 Button(onClick = {
                     showPermissionExplanation = false
                     openAppSettings(context)
-                }) {
-                    Text("OPEN SETTINGS")
-                }
+                }) { Text("OPEN SETTINGS") }
             },
             dismissButton = {
-                TextButton(onClick = onBack) {
-                    Text("CANCEL")
-                }
+                TextButton(onClick = onBack) { Text("CANCEL") }
             }
         )
     }
@@ -102,12 +118,22 @@ fun SetupScreen(
     SetupScreenContent(
         discoveredDevices = discoveredDevices,
         isScanning = isScanning,
+        connectionState = connectionState,
+        connectingDeviceId = connectingDeviceId,
         isIrSupported = isIrSupported,
         onBack = onBack,
-        onDevicePaired = onDevicePaired,
-        onPairDevice = { viewModel.pairDevice(it) },
+        onConnectDevice = { 
+            connectingDeviceId = it.id
+            viewModel.initiateConnection(it) 
+        },
+        onSubmitPairingCode = { viewModel.submitPairingCode(it) },
+        onCancelConnection = { 
+            connectingDeviceId = null
+            viewModel.cancelConnection() 
+        },
         onTestIrCommand = { brand, cmd -> viewModel.testIrCommand(brand, cmd) },
-        onSaveIrDevice = { viewModel.saveIrDevice(it) }
+        onSaveIrDevice = { viewModel.saveIrDevice(it) },
+        snackbarHostState = snackbarHostState
     )
 }
 
@@ -142,18 +168,31 @@ private fun openAppSettings(context: Context) {
 fun SetupScreenContent(
     discoveredDevices: List<Device>,
     isScanning: Boolean,
+    connectionState: com.example.omnicontrol.domain.ConnectionState,
+    connectingDeviceId: String?,
     isIrSupported: Boolean,
     onBack: () -> Unit,
-    onDevicePaired: () -> Unit,
-    onPairDevice: (Device) -> Unit,
+    onConnectDevice: (Device) -> Unit,
+    onSubmitPairingCode: (String) -> Unit,
+    onCancelConnection: () -> Unit,
     onTestIrCommand: (String, String) -> Unit,
-    onSaveIrDevice: (String) -> Unit
+    onSaveIrDevice: (String) -> Unit,
+    snackbarHostState: SnackbarHostState
 ) {
-    var connectingDeviceId by remember { mutableStateOf<String?>(null) }
     var showManualIpDialog by remember { mutableStateOf(false) }
     var showIrSetupDialog by remember { mutableStateOf(false) }
 
+    val showPairingDialog = connectionState == com.example.omnicontrol.domain.ConnectionState.PAIRING_REQUIRED
+
+    if (showPairingDialog) {
+        PairingCodeDialog(
+            onDismiss = onCancelConnection,
+            onSubmit = onSubmitPairingCode
+        )
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
                 title = { 
@@ -195,7 +234,7 @@ fun SetupScreenContent(
             )
             
             Text(
-                text = if (isScanning) "Searching for devices..." else "Scan complete.",
+                text = if (isScanning) "Searching for devices..." else if (connectingDeviceId != null) "Connecting..." else "Scan complete.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 modifier = Modifier.padding(top = 4.dp)
@@ -241,9 +280,7 @@ fun SetupScreenContent(
                         device = device,
                         isConnecting = connectingDeviceId == device.id,
                         onClick = {
-                            connectingDeviceId = device.id
-                            onPairDevice(device)
-                            onDevicePaired()
+                            onConnectDevice(device)
                         }
                     )
                 }
@@ -304,7 +341,7 @@ fun SetupScreenContent(
                 ManualIpDialog(
                     onDismiss = { showManualIpDialog = false },
                     onConfirm = { ip, type ->
-                        onPairDevice(
+                        onConnectDevice(
                             Device(
                                 id = "manual-$ip",
                                 name = "Manual Device",
@@ -313,7 +350,6 @@ fun SetupScreenContent(
                             )
                         )
                         showManualIpDialog = false
-                        onDevicePaired()
                     }
                 )
             }
@@ -324,7 +360,6 @@ fun SetupScreenContent(
                     onConfirm = { brand ->
                         onSaveIrDevice(brand)
                         showIrSetupDialog = false
-                        onDevicePaired()
                     },
                     onTestIrCommand = onTestIrCommand
                 )
@@ -491,44 +526,4 @@ fun ManualIpDialog(onDismiss: () -> Unit, onConfirm: (String, com.example.omnico
             TextButton(onClick = onDismiss) { Text("CANCEL", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)) }
         }
     )
-}
-
-@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
-@Composable
-fun SetupScreenDarkPreview() {
-    com.example.omnicontrol.ui.theme.OmniControlTheme(darkTheme = true) {
-        SetupScreenContent(
-            discoveredDevices = listOf(
-                com.example.omnicontrol.data.model.Device(id = "1", name = "Living Room TV", ipAddress = "192.168.1.10", type = com.example.omnicontrol.data.model.DeviceType.SAMSUNG),
-                com.example.omnicontrol.data.model.Device(id = "2", name = "Bedroom Roku", ipAddress = "192.168.1.11", type = com.example.omnicontrol.data.model.DeviceType.ROKU)
-            ),
-            isScanning = true,
-            isIrSupported = true,
-            onBack = {},
-            onDevicePaired = {},
-            onPairDevice = {},
-            onTestIrCommand = { _, _ -> },
-            onSaveIrDevice = {}
-        )
-    }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
-@Composable
-fun SetupScreenLightPreview() {
-    com.example.omnicontrol.ui.theme.OmniControlTheme(darkTheme = false) {
-        SetupScreenContent(
-            discoveredDevices = listOf(
-                com.example.omnicontrol.data.model.Device(id = "1", name = "Living Room TV", ipAddress = "192.168.1.10", type = com.example.omnicontrol.data.model.DeviceType.SAMSUNG),
-                com.example.omnicontrol.data.model.Device(id = "2", name = "Bedroom Roku", ipAddress = "192.168.1.11", type = com.example.omnicontrol.data.model.DeviceType.ROKU)
-            ),
-            isScanning = false,
-            isIrSupported = true,
-            onBack = {},
-            onDevicePaired = {},
-            onPairDevice = {},
-            onTestIrCommand = { _, _ -> },
-            onSaveIrDevice = {}
-        )
-    }
 }

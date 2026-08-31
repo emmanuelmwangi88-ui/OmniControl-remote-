@@ -131,5 +131,12 @@ class RokuController(
     override suspend fun back() { sendRequest("/keypress/Back") }
     override suspend fun launchApp(appId: String) { sendRequest("/launch/$appId") }
     
+    override suspend fun ping(): Boolean = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url("$baseUrl/query/device-info").get().build()
+        try {
+            client.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: Exception) { false }
+    }
+    
     override fun disconnect() {}
 }

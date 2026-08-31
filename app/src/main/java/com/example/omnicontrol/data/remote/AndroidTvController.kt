@@ -2,208 +2,179 @@ package com.example.omnicontrol.data.remote
 
 import android.content.Context
 import android.util.Log
+import com.example.omnicontrol.data.remote.atv.AndroidTvPairingClient
+import com.example.omnicontrol.data.remote.atv.AndroidTvRemoteConnection
+import com.example.omnicontrol.data.remote.atv.CertificateManager
+import com.example.omnicontrol.data.remote.atv.ClientIdentity
 import com.example.omnicontrol.domain.ConnectionResult
 import com.example.omnicontrol.domain.ConnectionState
 import com.example.omnicontrol.domain.DpadKey
 import com.example.omnicontrol.domain.RemoteController
-import com.google.android.gms.cast.framework.CastContext
-import com.google.android.gms.cast.framework.CastSession
-import com.google.android.gms.cast.framework.SessionManagerListener
-import com.google.android.gms.cast.framework.media.RemoteMediaClient
+import com.example.omnicontrol.proto.remote.RemoteKeyCode
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
 /**
- * Functional implementation of [RemoteController] for Android TV.
- * Uses Google Cast SDK for media control and session management.
- * Media controls (play/pause, volume, seek) are fully implemented using [RemoteMediaClient].
- * DPAD and System keys are placeholders as they require the Android TV Remote Service protocol.
+ * Talks the real Android TV Remote v2 protocol (see the `atv` package) instead of relying on
+ * the Google Cast SDK, which only manages casting sessions and was never actually connected to
+ * this device's IP. The client certificate is the same across every TV (see
+ * [CertificateManager]); what's per-device is whether that cert has been through the pairing
+ * handshake with *this* TV yet, tracked via [Device.authToken] the same way Samsung/LG already
+ * store their own per-device tokens — here it's just a "paired" marker rather than a secret.
  */
 class AndroidTvController(
     private val context: Context,
-    private val ipAddress: String
+    private val ipAddress: String,
+    initialAuthToken: String? = null
 ) : RemoteController {
 
-    private val TAG = "AndroidTvController"
+    private val tag = "AndroidTvController"
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val castContext: CastContext by lazy {
-        CastContext.getSharedInstance(context)
-    }
+    private var authToken: String? = initialAuthToken
+    private var tokenListener: ((String) -> Unit)? = null
 
-    private var castSession: CastSession? = null
-    private var remoteMediaClient: RemoteMediaClient? = null
+    private var pairingClient: AndroidTvPairingClient? = null
+    private var remoteConnection: AndroidTvRemoteConnection? = null
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     override val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
-    private val sessionListener = object : SessionManagerListener<CastSession> {
-        override fun onSessionStarted(session: CastSession, sessionId: String) {
-            Log.d(TAG, "Cast session started: $sessionId")
-            updateSession(session)
-            _connectionState.value = ConnectionState.CONNECTED
-        }
-
-        override fun onSessionEnded(session: CastSession, error: Int) {
-            Log.d(TAG, "Cast session ended: $error")
-            updateSession(null)
-            _connectionState.value = ConnectionState.DISCONNECTED
-        }
-
-        override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
-            Log.d(TAG, "Cast session resumed")
-            updateSession(session)
-            _connectionState.value = ConnectionState.CONNECTED
-        }
-
-        override fun onSessionStarting(session: CastSession) {
-            _connectionState.value = ConnectionState.CONNECTING
-        }
-
-        override fun onSessionSuspended(session: CastSession, reason: Int) {
-            _connectionState.value = ConnectionState.CONNECTING
-        }
-
-        override fun onSessionStartFailed(session: CastSession, error: Int) {
-            Log.e(TAG, "Cast session start failed: $error")
-            _connectionState.value = ConnectionState.ERROR
-        }
-
-        override fun onSessionResumeFailed(session: CastSession, error: Int) {
-            Log.e(TAG, "Cast session resume failed: $error")
-            _connectionState.value = ConnectionState.ERROR
-        }
-
-        override fun onSessionEnding(session: CastSession) {}
-        override fun onSessionResuming(session: CastSession, sessionId: String) {}
+    override fun setTokenListener(listener: (String) -> Unit) {
+        this.tokenListener = listener
     }
 
-    init {
+    override suspend fun connect(): ConnectionResult = withContext(Dispatchers.IO) {
+        _connectionState.value = ConnectionState.CONNECTING
         try {
-            castContext.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
-            updateSession(castContext.sessionManager.currentCastSession)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize Cast SDK. Ensure a CastOptionsProvider is defined.", e)
-        }
-    }
+            val identity = CertificateManager.getOrCreateClientIdentity()
 
-    private fun updateSession(session: CastSession?) {
-        castSession = session
-        remoteMediaClient = session?.remoteMediaClient
-        if (session != null && session.isConnected) {
-            _connectionState.value = ConnectionState.CONNECTED
-        }
-    }
-
-    override suspend fun connect(): ConnectionResult = withContext(Dispatchers.Main) {
-        try {
-            if (castSession?.isConnected == true) {
-                _connectionState.value = ConnectionState.CONNECTED
-                return@withContext ConnectionResult.Success
+            if (authToken == PAIRED_MARKER) {
+                // Already paired with this specific TV in a previous session — the client cert
+                // is the same, so we should be able to go straight to the command channel.
+                if (openRemoteConnection(identity)) {
+                    _connectionState.value = ConnectionState.CONNECTED
+                    return@withContext ConnectionResult.Success
+                }
+                Log.w(tag, "Stored pairing no longer accepted by $ipAddress, re-pairing")
             }
 
-            // In this implementation, we simulate the need for pairing to match the UI flow.
-            _connectionState.value = ConnectionState.PAIRING_REQUIRED
-            ConnectionResult.PairingRequired
+            beginPairing(identity)
         } catch (e: Exception) {
-            Log.e(TAG, "Connection attempt failed", e)
+            Log.e(tag, "Connect failed for $ipAddress", e)
             _connectionState.value = ConnectionState.ERROR
             ConnectionResult.Failure(e.message ?: "Connection failed")
         }
     }
 
-    override suspend fun pair(pin: String) = withContext(Dispatchers.Main) {
-        Log.d(TAG, "Pairing with Android TV at $ipAddress using PIN: $pin")
-        // Pairing successful - state updated to CONNECTED to allow remote usage
-        _connectionState.value = ConnectionState.CONNECTED
-        Unit
-    }
+    override suspend fun pair(pin: String) = withContext(Dispatchers.IO) {
+        val client = pairingClient
+            ?: throw IllegalStateException("Pairing wasn't started — call connect() first")
+        try {
+            client.finishPairing(pin)
+            client.close()
+            pairingClient = null
+            authToken = PAIRED_MARKER
+            tokenListener?.invoke(PAIRED_MARKER)
 
-    override suspend fun volumeUp() = withContext(Dispatchers.Main) {
-        castSession?.let { session ->
-            val currentVolume = session.volume
-            session.setVolume(minOf(currentVolume + 0.05, 1.0))
+            val identity = CertificateManager.getOrCreateClientIdentity()
+            if (!openRemoteConnection(identity)) {
+                throw IllegalStateException("Paired, but the TV closed the command connection")
+            }
+            _connectionState.value = ConnectionState.CONNECTED
+        } catch (e: Exception) {
+            Log.e(tag, "Pairing failed for $ipAddress", e)
+            _connectionState.value = ConnectionState.ERROR
+            throw e
         }
         Unit
     }
 
-    override suspend fun volumeDown() = withContext(Dispatchers.Main) {
-        castSession?.let { session ->
-            val currentVolume = session.volume
-            session.setVolume(maxOf(currentVolume - 0.05, 0.0))
+    override suspend fun powerToggle() = send(RemoteKeyCode.KEYCODE_POWER)
+    override suspend fun volumeUp() = send(RemoteKeyCode.KEYCODE_VOLUME_UP)
+    override suspend fun volumeDown() = send(RemoteKeyCode.KEYCODE_VOLUME_DOWN)
+    override suspend fun mute() = send(RemoteKeyCode.KEYCODE_VOLUME_MUTE)
+    override suspend fun playPause() = send(RemoteKeyCode.KEYCODE_MEDIA_PLAY_PAUSE)
+    override suspend fun home() = send(RemoteKeyCode.KEYCODE_HOME)
+    override suspend fun back() = send(RemoteKeyCode.KEYCODE_BACK)
+    override suspend fun tv() = send(RemoteKeyCode.KEYCODE_TV)
+    override suspend fun channelUp() = send(RemoteKeyCode.KEYCODE_CHANNEL_UP)
+    override suspend fun channelDown() = send(RemoteKeyCode.KEYCODE_CHANNEL_DOWN)
+    override suspend fun rewind() = send(RemoteKeyCode.KEYCODE_MEDIA_REWIND)
+    override suspend fun fastForward() = send(RemoteKeyCode.KEYCODE_MEDIA_FAST_FORWARD)
+
+    override suspend fun dpad(direction: DpadKey) = send(
+        when (direction) {
+            DpadKey.UP -> RemoteKeyCode.KEYCODE_DPAD_UP
+            DpadKey.DOWN -> RemoteKeyCode.KEYCODE_DPAD_DOWN
+            DpadKey.LEFT -> RemoteKeyCode.KEYCODE_DPAD_LEFT
+            DpadKey.RIGHT -> RemoteKeyCode.KEYCODE_DPAD_RIGHT
+            DpadKey.SELECT -> RemoteKeyCode.KEYCODE_DPAD_CENTER
+        }
+    )
+
+    override suspend fun launchApp(appId: String): Unit = withContext(Dispatchers.IO) {
+        // The real protocol launches apps via a deep-link URI (e.g. "https://www.youtube.com/"),
+        // not an arbitrary app id — Roku-style ids like "youtube" won't resolve to anything on
+        // Android TV. We pass it through best-effort for callers that already have a real link.
+        try {
+            remoteConnection?.sendAppLink(appId)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to launch app link '$appId' on $ipAddress", e)
         }
         Unit
-    }
-
-    override suspend fun mute() = withContext(Dispatchers.Main) {
-        castSession?.let { session ->
-            session.setMute(!session.isMute)
-        }
-        Unit
-    }
-
-    override suspend fun playPause() = withContext(Dispatchers.Main) {
-        remoteMediaClient?.let { client ->
-            if (client.isPlaying) client.pause() else client.play()
-        }
-        Unit
-    }
-
-    override suspend fun rewind() = withContext(Dispatchers.Main) {
-        remoteMediaClient?.let { client ->
-            val currentPos = client.approximateStreamPosition
-            client.seek(maxOf(currentPos - 10000, 0L))
-        }
-        Unit
-    }
-
-    override suspend fun fastForward() = withContext(Dispatchers.Main) {
-        remoteMediaClient?.let { client ->
-            val currentPos = client.approximateStreamPosition
-            val duration = client.streamDuration
-            client.seek(minOf(currentPos + 10000, duration))
-        }
-        Unit
-    }
-
-    override suspend fun dpad(direction: DpadKey) = withContext(Dispatchers.Main) {
-        Log.d(TAG, "DPAD Command: $direction (requires Remote Service protocol)")
-        if (_connectionState.value != ConnectionState.CONNECTED) {
-            _connectionState.value = ConnectionState.CONNECTED // Auto-reconnect for simulation
-        }
-        Unit
-    }
-
-    override suspend fun home() = withContext(Dispatchers.Main) {
-        Log.d(TAG, "Home key pressed")
-        Unit
-    }
-
-    override suspend fun back() = withContext(Dispatchers.Main) {
-        Log.d(TAG, "Back key pressed")
-        Unit
-    }
-
-    override suspend fun launchApp(appId: String) = withContext(Dispatchers.Main) {
-        Log.d(TAG, "Request to launch app: $appId")
-        // Programmatic app launch via Cast SDK typically requires starting a new session with the App ID.
-        Unit
-    }
-
-    override suspend fun powerToggle() {
-        Log.d(TAG, "Power Toggle triggered")
     }
 
     override fun disconnect() {
-        try {
-            castContext.sessionManager.removeSessionManagerListener(sessionListener, CastSession::class.java)
-            castContext.sessionManager.endCurrentSession(true)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during disconnection", e)
-        }
-        updateSession(null)
+        pairingClient?.close()
+        pairingClient = null
+        remoteConnection?.close()
+        remoteConnection = null
         _connectionState.value = ConnectionState.DISCONNECTED
+    }
+
+    private suspend fun beginPairing(identity: ClientIdentity): ConnectionResult {
+        val client = AndroidTvPairingClient(ipAddress, identity)
+        client.startPairing()
+        pairingClient = client
+        _connectionState.value = ConnectionState.PAIRING_REQUIRED
+        return ConnectionResult.PairingRequired
+    }
+
+    /** Returns false (rather than throwing) if the TV rejects our cert, so callers can fall back to pairing. */
+    private suspend fun openRemoteConnection(identity: ClientIdentity): Boolean {
+        return try {
+            val connection = AndroidTvRemoteConnection(ipAddress, identity)
+            connection.onDisconnected = {
+                if (_connectionState.value == ConnectionState.CONNECTED) {
+                    _connectionState.value = ConnectionState.DISCONNECTED
+                }
+            }
+            connection.connect(scope)
+            remoteConnection = connection
+            true
+        } catch (e: Exception) {
+            Log.w(tag, "Direct connection to $ipAddress failed: ${e.message}")
+            false
+        }
+    }
+
+    private suspend fun send(keyCode: RemoteKeyCode) = withContext(Dispatchers.IO) {
+        try {
+            remoteConnection?.sendKey(keyCode)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to send $keyCode to $ipAddress", e)
+            _connectionState.value = ConnectionState.ERROR
+        }
+        Unit
+    }
+
+    companion object {
+        const val PAIRED_MARKER = "atv_v2_paired"
     }
 }
